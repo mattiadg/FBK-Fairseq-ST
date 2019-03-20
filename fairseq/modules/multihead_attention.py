@@ -262,6 +262,7 @@ def gaussian(matrix, batch_size=1, variance=1e-6):
 def log(matrix, batch_size=1, unused=None):
     return torch.max(torch.zeros_like(matrix), torch.log(matrix))
 
+
 class LocalMultiheadAttention(nn.Module):
     """Multi-headed attention.
 
@@ -470,7 +471,6 @@ class LocalMultiheadAttention(nn.Module):
             'attn_state',
             buffer,
         )
-
 
 
 class ConvAttention2D(nn.Module):

@@ -13,7 +13,6 @@ from torch.nn.parameter import Parameter
 
 from fairseq import utils
 from fairseq.modules import MultiheadAttention
-
 from . import (
     FairseqEncoder, FairseqIncrementalDecoder, FairseqModel,
     register_model, register_model_architecture,
@@ -645,6 +644,17 @@ def LSTM(input_size, hidden_size, **kwargs):
         elif 'bias' in name:
             nn.init.constant_(param, 0)
     return m
+
+def LSTMCell(input_size, hidden_size, **kwargs):
+    m = nn.LSTMCell(input_size, hidden_size, **kwargs)
+    for name, param in m.named_parameters():
+        if 'weight' in name:
+            nn.init.normal_(param, mean=0, std=0.1)
+        elif 'bias' in name:
+            nn.init.constant_(param, 0)
+            #param.data.uniform_(-0.1, 0.1)
+    return m
+
 
 def LSTMCell(input_size, hidden_size, **kwargs):
     m = nn.LSTMCell(input_size, hidden_size, **kwargs)

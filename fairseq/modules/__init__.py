@@ -37,6 +37,4 @@ __all__ = [
     'ScalarBias',
     'SinusoidalPositionalEmbedding',
     'PositionalEmbeddingAudio',
-    'ConvMultiHeadAttention',
-    'GradReverse', 'grad_reverse'
-]
+    'ConvAttention2D',]

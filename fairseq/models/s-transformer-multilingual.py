@@ -1,3 +1,6 @@
+# Copyright (c) 2017-present, Facebook, Inc.
+# All rights reserved.
+#
 # This source code is licensed under the license found in the LICENSE file in
 # the root directory of this source tree. An additional grant of patent rights
 # can be found in the PATENTS file in the same directory.
@@ -15,7 +18,7 @@ from torch.nn.parameter import Parameter
 from fairseq.modules import (
     AdaptiveSoftmax, LearnedPositionalEmbedding, LocalMultiheadAttention,
     SinusoidalPositionalEmbedding, PositionalEmbeddingAudio,
-    GradMultiply, MultiheadAttention
+    GradMultiply, MultiheadAttention, ConvAttention2D
 )
 
 from . import (
@@ -24,12 +27,12 @@ from . import (
 )
 import torch.utils.checkpoint as cp
 
-# Code for the R-Transformer
 
-@register_model('r_transformer')
+@register_model('s-transformer-multilingual')
 class TransformerModel(FairseqModel):
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder, decoder, keys):
         super().__init__(encoder, decoder)
+        self.keys = keys
 
     @staticmethod
     def add_args(parser):
@@ -56,6 +59,9 @@ class TransformerModel(FairseqModel):
                             help='use learned positional embeddings in the encoder')
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
+        parser.add_argument('--language-embed-path', type=str, metavar='STR',
+                            default=None,
+                            help='path to pre-trained language embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
         parser.add_argument('--decoder-ffn-embed-dim', type=int, metavar='N',
@@ -79,12 +85,13 @@ class TransformerModel(FairseqModel):
         parser.add_argument('--encoder-convolutions', type=str, metavar='EXPR',
                             help='encoder layers [(dim, kernel_size), ...]')
         parser.add_argument('--normalization-constant', type=float, default=1.0)
-        parser.add_argument('--conv-attention', action='store_true')
-        parser.add_argument('--distance-penalty', type=str, default=False,
-                            choices=['log', 'gauss'],
+        parser.add_argument('--no-attn-2d', action='store_true', default=False,
+                            help="Whether to use 2d attention")
+        parser.add_argument('--token-position',
+                            choices=['encoder-pre', 'encoder-post', 'decoder'],
+                            help="Position of the language token")
+        parser.add_argument('--distance-penalty', action='store_true', default=False,
                             help='Add distance penalty to the encoder')
-        parser.add_argument('--init-variance', type=float, default=1.0,
-                            help='Initialization value for variance')
 
 
     @classmethod
@@ -100,6 +107,7 @@ class TransformerModel(FairseqModel):
             args.max_target_positions = 100000
 
         src_dict, tgt_dict = task.source_dictionary, task.target_dictionary
+        lang_dict = task.language_dictionary
 
         def build_embedding(dictionary, embed_dim, path=None):
             num_embeddings = len(dictionary)
@@ -115,24 +123,51 @@ class TransformerModel(FairseqModel):
                 tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
 
+        embed_token_dim = 0
+        if args.token_position == 'decoder':
+            embed_token_dim = args.decoder_embed_dim
+        elif args.token_position =='encoder-pre':
+            embed_token_dim = task.audio_features
+        elif args.token_position == 'encoder-post' or args.token_position == 'encoder-end':
+            embed_token_dim = args.encoder_embed_dim
+
+        lang_embed_tokens = build_embedding(
+            lang_dict, embed_token_dim, args.language_embed_path
+        )
+
         encoder = TransformerEncoder(args,
                 tgt_dict,
                 audio_features=task.audio_features,
+                language_embeddings=lang_embed_tokens,
+                token_position=args.token_position
             )
         decoder = TransformerDecoder(args,
                 tgt_dict,
                 decoder_embed_tokens,
+                language_embeddings=lang_embed_tokens,
+                token_position=args.token_position
             )
-        return TransformerModel(encoder, decoder)
+        return TransformerModel(encoder, decoder, task.args.lang_pairs)
+
+
+    @property
+    def supports_multilingual(self):
+        return True
+
+    def max_positions(self):
+        """Maximum length supported by the model."""
+        return {
+            key: (self.encoder.max_positions(), self.decoder.max_positions())
+            for key in self.keys
+        }
 
 
 class TransformerEncoder(FairseqEncoder):
     """Transformer encoder."""
     def __init__(self, args, dictionary, left_pad=True, convolutions=((512, 3),) * 20, stride=2,
-                 audio_features=40, ):
+                 audio_features=40, language_embeddings=None, token_position='decoder'):
         super().__init__(dictionary)
         self.dropout = args.dropout
-        embed_dim = args.encoder_embed_dim
         self.max_source_positions = args.max_source_positions
 
         self.padding_idx = dictionary.pad()
@@ -153,60 +188,74 @@ class TransformerEncoder(FairseqEncoder):
             )
             in_channels = out_channels
         self.relu = nn.ReLU()
+        if args.attn_2d:
+            self.attn_2d = nn.ModuleList([ConvAttention2D(out_channels, 4,
+                                                          dropout=self.dropout) for _ in range(2)])
+        self.bn = nn.ModuleList([BatchNorm(out_channels) for _ in range(2+1)])
 
-        self.fc1 = Linear(audio_features, 2*embed_dim)
-        self.fc2 = Linear(2*embed_dim, embed_dim)
-        self.embed_scale = math.sqrt(embed_dim)
-
-        args.encoder_dim = embed_dim * (in_channels // (2 ** len(convolutions))) // 2
-
+        flat_dim = math.ceil(math.ceil(audio_features / 2) / 2) * out_channels
         self.layers = nn.ModuleList([])
 
-        encoder_embed_dim = args.encoder_embed_dim
-        args.encoder_embed_dim = args.encoder_dim
-        self.fc3 = Linear(args.encoder_dim*2, embed_dim*2)
+        self.fc3 = Linear(flat_dim, args.encoder_embed_dim)
         self.layers.extend([
             TransformerEncoderLayer(args)
             for _ in range(args.encoder_layers)
         ])
         self.embed_positions = PositionalEmbeddingAudio(
-            args.max_source_positions, args.encoder_dim, 0,
+            args.max_source_positions, args.encoder_embed_dim, self.padding_idx,
             left_pad=left_pad,
             learned=args.encoder_learned_pos,
         ) if not args.no_token_positional_embeddings else None
-        args.encoder_embed_dim = encoder_embed_dim
         self.register_buffer('version', torch.Tensor([2]))
         self.normalize = args.encoder_normalize_before
         if self.normalize:
-           self.layer_norm = LayerNorm(args.encoder_dim)
+           self.layer_norm = LayerNorm(args.encoder_embed_dim)
+
+        self.language_embeddings = language_embeddings
+        self.token_position = token_position
 
     def forward(self, src_tokens, src_lengths):
-        # embed tokens and positions
-        x = src_tokens
-        x = torch.tanh(self.fc1(x))
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = torch.tanh(self.fc2(x))
+        #Separate input from the language token
+        src_tokens, lang_tokens = src_tokens
+
+        if self.token_position == 'encoder-pre':
+            #Concatenate language embedding here B -> B x C
+            src_tokens, src_lengths = self.concat_language_embedding\
+                (src_tokens, lang_tokens, src_lengths, dim=1)
 
         #B x T x C -> B x 1 x T x C
-        x = x.unsqueeze(1)
+        x = src_tokens.unsqueeze(1)
         # temporal convolutions
-        for conv in self.convolutions:
-           x = F.dropout(x, p=self.dropout, training=self.training)
-           if conv.kernel_size[0] % 2 == 1:
-               #padding is implicit in the conv
-               x = conv(x)
-           else:
-               padding_l = (conv.kernel_size[0] - 1) // 2
-               padding_r = conv.kernel_size[0] // 2
-               x = F.pad(x, (0, 0, 0, 0, padding_l, padding_r))
-               x = conv(x)
-           src_lengths = torch.ceil(src_lengths.float() / 2).long()
+        for i, conv in enumerate(self.convolutions):
+            if conv.kernel_size[0] % 2 == 1:
+                #padding is implicit in the conv
+                x = conv(x)
+            else:
+                padding_l = (conv.kernel_size[0] - 1) // 2
+                padding_r = conv.kernel_size[0] // 2
+                x = F.pad(x, (0, 0, 0, 0, padding_l, padding_r))
+                x = conv(x)
+            x = self.bn[i](self.relu(x))
+            src_lengths = torch.ceil(src_lengths.float() / 2).long()
+            #x = F.dropout(x, p=self.dropout, training=self.training)
+
+        if hasattr(self, 'attn_2d'):
+            residual = x
+            x, _ = self.attn_2d[0](query=x, key=x, value=x)
+            x = x + residual
+            residual = x
+            x, _ = self.attn_2d[1](query=x, key=x, value=x)
+            x = x + residual
+
         # B x Cout x T x F -> T x B x C
         bsz, out_channels, time, feats = x.size()
         x = x.transpose(1, 2).contiguous().view(bsz, time, -1) \
             .contiguous().transpose(0, 1)
-        x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.relu(self.fc3(x))
+
+        if self.token_position == 'encoder-post':
+            #Concatenate language embedding here B -> B x C
+            x, src_lengths = self.concat_language_embedding(x, lang_tokens, src_lengths, dim=0)
 
         x = x + self.embed_positions(x.transpose(0, 1), src_lengths).transpose(0, 1)
         x = F.dropout(x, p=self.dropout, training=self.training)
@@ -217,12 +266,18 @@ class TransformerEncoder(FairseqEncoder):
         for layer in self.layers:
             x = layer(x, encoder_padding_mask)
 
+        if self.token_position == 'encoder-final':
+            #Concatenate language embedding here B -> B x C
+            x, src_lengths = self.concat_language_embedding(x, lang_tokens, src_lengths, dim=0)
+            encoder_padding_mask = self.create_mask(src_lengths)
+
         if self.normalize:
             x = self.layer_norm(x)
 
         return {
             'encoder_out': x,  # T x B x C
             'encoder_padding_mask': encoder_padding_mask,  # B x T
+            'lang_tokens': lang_tokens
         }
 
     def create_mask(self, lengths):
@@ -242,6 +297,12 @@ class TransformerEncoder(FairseqEncoder):
             encoder_out['encoder_padding_mask'] = \
                 encoder_out['encoder_padding_mask'].index_select(0, new_order)
         return encoder_out
+
+    def concat_language_embedding(self, sequence, lang_tokens, seq_len, dim=0):
+        lang_embed = self.language_embeddings(lang_tokens)
+        x = torch.cat([lang_embed.unsqueeze(dim), sequence], dim=dim)
+        seq_len = seq_len + 1
+        return x, seq_len
 
     def max_positions(self):
         """Maximum input length supported by the encoder."""
@@ -273,11 +334,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         embed_tokens (torch.nn.Embedding): output embedding
         no_encoder_attn (bool, optional): whether to attend to encoder outputs.
             Default: ``False``
-        left_pad (bool, optional): whether the input is left-padded. Default:
+        left_pad (bool, optional): whether the input is l(not audio)eft-padded. Default:
             ``False``
     """
 
-    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False, left_pad=False, final_norm=True):
+    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False, left_pad=False, final_norm=True,
+                 language_embeddings=None, token_position='encoder-pre'):
         super().__init__(dictionary)
         self.dropout = args.dropout
         self.share_input_output_embed = args.share_decoder_input_output_embed
@@ -329,6 +391,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.normalize:
             self.layer_norm = LayerNorm(embed_dim)
 
+        self.language_embeddings = language_embeddings
+        self.token_position = token_position
+
     def forward(self, prev_output_tokens, encoder_out=None, incremental_state=None):
         """
         Args:
@@ -346,6 +411,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 - the last decoder layer's attention weights of shape `(batch,
                   tgt_len, src_len)`
         """
+        #Separate target tokens from language tokens
+        if encoder_out is not None and self.token_position == 'decoder':
+            lang_embed = self.language_embeddings(encoder_out['lang_tokens'])[0].unsqueeze(0)
+        else:
+            lang_embed = None
+
         # embed positions
         positions = self.embed_positions(
             prev_output_tokens,
@@ -358,7 +429,19 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 positions = positions[:, -1:]
 
         # embed tokens and positions
-        x = self.embed_scale * self.embed_tokens(prev_output_tokens)
+        x = self.embed_tokens(prev_output_tokens)
+        if lang_embed is not None:
+            if incremental_state is not None:# and len(incremental_state) == 0:
+                if lang_embed.size(0) != x.size(0):
+                    if x.size(0) % lang_embed.size(0) == 0:
+                        beam = x.size(0) // lang_embed.size(0)
+                        lang_embed = lang_embed.repeat(1, beam).view(-1, lang_embed.size(1))
+                    else:
+                        raise RuntimeError("x is not a beam of lang_embed!")
+            #if incremental_state is None or len(incremental_state) == 0:
+                #x[:, 0, :] = lang_embed
+            x = x + lang_embed.unsqueeze(1)
+        x = self.embed_scale * x
 
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
@@ -437,7 +520,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                     if k in state_dict:
                         state_dict['{}.layers.{}.{}.{}'.format(name, i, new, m)] = state_dict[k]
                         del state_dict[k]
-        if utils.item(state_dict.get('{}.version'.format(name), torch.Tensor([1]))[0]) < 2:
+        if utils.item(state_dict.get('{}.version'.format(name), torch.Tensor([2]))[0]) < 2:
             # earlier checkpoints did not normalize after the stack of layers
             self.layer_norm = None
             self.normalize = False
@@ -464,11 +547,10 @@ class TransformerEncoderLayer(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.embed_dim = args.encoder_embed_dim
-        attn = LocalMultiheadAttention if args.distance_penalty != False else MultiheadAttention
+        attn = LocalMultiheadAttention if args.distance_penalty else MultiheadAttention
         self.self_attn = attn(
             self.embed_dim, args.encoder_attention_heads,
-            dropout=args.attention_dropout, penalty=args.distance_penalty,
-            init_variance=(args.init_variance if args.distance_penalty == 'gauss' else None)
+            dropout=args.attention_dropout,
         )
         self.dropout = args.dropout
         self.relu_dropout = args.relu_dropout
@@ -723,7 +805,8 @@ def BatchNorm(embedding_dim):
     nn.init.constant_(m.bias, 0)
     return m
 
-@register_model_architecture('r_transformer', 'r_transformer')
+
+@register_model_architecture('s-transformer-multilingual', 's-transformer-multilingual')
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, 'encoder_embed_path', None)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 512)
@@ -747,44 +830,19 @@ def base_architecture(args):
     args.share_all_embeddings = getattr(args, 'share_all_embeddings', False)
     args.no_token_positional_embeddings = getattr(args, 'no_token_positional_embeddings', False)
 
-@register_model_architecture('r_transformer', 'r_transformer_small')
+
+@register_model_architecture('s-transformer-multilingual', 's-transformer-multilingual-paper')
 def speechtransformer_fbk(args):
     args.dropout = getattr(args, 'dropout', 0.3)
     args.normalization_constant = getattr(args, 'normalization_constant', 0.5)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
     args.relu_dropout = getattr(args, 'relu_dropout', 0.1)
-    args.conv_attention = getattr(args, 'conv_attention', False)
+    args.attn_2d = not getattr(args, 'no_attn_2d', False)
 
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
-    args.encoder_convolutions = getattr(args, 'encoder_convolutions', '[(16, 3, 3)] * 2')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
+    args.encoder_convolutions = getattr(args, 'encoder_convolutions', '[(64, 3, 3)] * 2')
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 768)
-    args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
-    args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', False)
-    args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
-
-    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 256)
-    args.decoder_layers = getattr(args, 'decoder_layers', 6)
-    args.decoder_out_embed_dim = getattr(args, 'decoder_out_embed_dim', 256)
-    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 768)
-    args.decoder_output_dim = getattr(args, 'decoder_output_dim', 256)
-    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
-    args.decoder_learned_pos = getattr(args, 'decoder_learned_pos', False)
-    args.decoder_normalize_before = getattr(args, 'decoder_normalize_before', True)
-
-
-@register_model_architecture('r_transformer', 'r_transformer_small_conv')
-def speechtransformer_fbk(args):
-    args.dropout = getattr(args, 'dropout', 0.3)
-    args.normalization_constant = getattr(args, 'normalization_constant', 0.5)
-    args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.relu_dropout = getattr(args, 'relu_dropout', 0.1)
-    args.conv_attention = getattr(args, 'conv_attention', True)
-
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
-    args.encoder_convolutions = getattr(args, 'encoder_convolutions', '[(16, 3, 3)] * 2')
-    args.encoder_layers = getattr(args, 'encoder_layers', 6)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1024)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
     args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', False)
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
@@ -792,54 +850,60 @@ def speechtransformer_fbk(args):
     args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 256)
     args.decoder_layers = getattr(args, 'decoder_layers', 6)
     args.decoder_out_embed_dim = getattr(args, 'decoder_out_embed_dim', 256)
-    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 1024)
+    args.decoder_output_dim = getattr(args, 'decoder_output_dim', 256)
+    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 768)
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 4)
     args.decoder_learned_pos = getattr(args, 'decoder_learned_pos', False)
     args.decoder_normalize_before = getattr(args, 'decoder_normalize_before', True)
 
 
-@register_model_architecture('r_transformer', 'r_transformer_medium')
+@register_model_architecture('s-transformer-multilingual', 's-transformer-multilingual-big')
 def speechtransformer_fbk(args):
-    args.dropout = getattr(args, 'dropout', 0.1)
+    args.dropout = getattr(args, 'dropout', 0.3)
     args.normalization_constant = getattr(args, 'normalization_constant', 0.5)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
     args.relu_dropout = getattr(args, 'relu_dropout', 0.1)
-    args.share_decoder_input_output_embed = getattr(args, 'share_decoder_input_output_embed', False)
+    args.attn_2d = not getattr(args, 'no_attn_2d', False)
 
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
-    args.encoder_convolutions = getattr(args, 'encoder_convolutions', '[(8, 3, 3)] * 2')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 512)
+    args.encoder_convolutions = getattr(args, 'encoder_convolutions', '[(64, 3, 3)] * 2')
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 768)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1024)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
     args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', False)
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
 
-    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 256)
+    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 512)
     args.decoder_layers = getattr(args, 'decoder_layers', 6)
-    args.decoder_out_embed_dim = getattr(args, 'decoder_out_embed_dim', 256)
-    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 768)
+    args.decoder_out_embed_dim = getattr(args, 'decoder_out_embed_dim', 512)
+    args.decoder_output_dim = getattr(args, 'decoder_output_dim', 512)
+    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 1024)
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
     args.decoder_learned_pos = getattr(args, 'decoder_learned_pos', False)
+    args.decoder_normalize_before = getattr(args, 'decoder_normalize_before', True)
 
-@register_model_architecture('r_transformer', 'r_transformer_medium_red8')
-def speechtransformer_fbk_red8(args):
-    args.dropout = getattr(args, 'dropout', 0.1)
+
+@register_model_architecture('s-transformer-multilingual', 's-transformer-multilingual-giant')
+def speechtransformer_fbk(args):
+    args.dropout = getattr(args, 'dropout', 0.3)
     args.normalization_constant = getattr(args, 'normalization_constant', 0.5)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
     args.relu_dropout = getattr(args, 'relu_dropout', 0.1)
-    args.share_decoder_input_output_embed = getattr(args, 'share_decoder_input_output_embed', False)
+    args.attn_2d = not getattr(args, 'no_attn_2d', False)
 
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
-    args.encoder_convolutions = getattr(args, 'encoder_convolutions', '[(16, 3, 3)] * 3')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
+    args.encoder_convolutions = getattr(args, 'encoder_convolutions', '[(128, 3, 3)] * 2')
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 768)
-    args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 2048)
+    args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 16)
     args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', False)
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
 
-    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 256)
+    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 1024)
     args.decoder_layers = getattr(args, 'decoder_layers', 6)
-    args.decoder_out_embed_dim = getattr(args, 'decoder_out_embed_dim', 256)
-    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 768)
-    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
+    args.decoder_out_embed_dim = getattr(args, 'decoder_out_embed_dim', 1024)
+    args.decoder_output_dim = getattr(args, 'decoder_output_dim', 1024)
+    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 2048)
+    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 16)
     args.decoder_learned_pos = getattr(args, 'decoder_learned_pos', False)
+    args.decoder_normalize_before = getattr(args, 'decoder_normalize_before', True)
