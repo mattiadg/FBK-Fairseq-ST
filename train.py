@@ -82,6 +82,9 @@ def main(args):
         for p in model.encoder.parameters():
             p.requires_grad = False
 
+    if hasattr(args, 'init_variance'):
+        model.encoder.set_variance(args.init_variance)
+
     # Train until the learning rate gets too small
     max_epoch = args.max_epoch or math.inf
     max_update = args.max_update or math.inf

@@ -178,6 +178,10 @@ class TransformerEncoder(FairseqEncoder):
         if self.normalize:
            self.layer_norm = LayerNorm(args.encoder_embed_dim)
 
+    def set_variance(self, var):
+        for layer in self.layers:
+            layer.set_variance(var)
+
     def forward(self, src_tokens, src_lengths):
         #B x T x C -> B x 1 x T x C
         x = src_tokens.unsqueeze(1)
@@ -477,6 +481,9 @@ class TransformerEncoderLayer(nn.Module):
         self.fc1 = Linear(self.embed_dim, args.encoder_ffn_embed_dim)
         self.fc2 = Linear(args.encoder_ffn_embed_dim, self.embed_dim)
         self.layer_norms = nn.ModuleList([LayerNorm(self.embed_dim) for i in range(2)])
+
+    def set_variance(self, var):
+        self.self_attn.set_variance(var)
 
     def forward(self, x, encoder_padding_mask):
         """

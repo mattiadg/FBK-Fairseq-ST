@@ -302,6 +302,10 @@ class LocalMultiheadAttention(nn.Module):
             nn.init.constant_(self.in_proj_bias, 0.)
             nn.init.constant_(self.out_proj.bias, 0.)
 
+    def set_variance(self, var):
+        #self.vars.data = var
+        pass
+
     def forward(self, query, key, value, mask_future_timesteps=False,
                 key_padding_mask=None, incremental_state=None,
                 need_weights=True, static_kv=False):

@@ -88,7 +88,7 @@ class TransformerModel(FairseqModel):
         parser.add_argument('--no-attn-2d', action='store_true', default=False,
                             help="Whether to use 2d attention")
         parser.add_argument('--token-position',
-                            choices=['encoder-pre', 'encoder-post', 'decoder'],
+                            choices=['encoder-pre', 'encoder-post', 'encoder-final', 'decoder'],
                             help="Position of the language token")
         parser.add_argument('--distance-penalty', action='store_true', default=False,
                             help='Add distance penalty to the encoder')
@@ -128,7 +128,7 @@ class TransformerModel(FairseqModel):
             embed_token_dim = args.decoder_embed_dim
         elif args.token_position =='encoder-pre':
             embed_token_dim = task.audio_features
-        elif args.token_position == 'encoder-post' or args.token_position == 'encoder-end':
+        elif args.token_position == 'encoder-post' or args.token_position == 'encoder-final':
             embed_token_dim = args.encoder_embed_dim
 
         lang_embed_tokens = build_embedding(
@@ -300,8 +300,9 @@ class TransformerEncoder(FairseqEncoder):
 
     def concat_language_embedding(self, sequence, lang_tokens, seq_len, dim=0):
         lang_embed = self.language_embeddings(lang_tokens)
-        x = torch.cat([lang_embed.unsqueeze(dim), sequence], dim=dim)
-        seq_len = seq_len + 1
+        #x = torch.cat([lang_embed.unsqueeze(dim), sequence], dim=dim)
+        x = sequence + lang_embed.unsqueeze(dim)
+        #seq_len = seq_len + 1
         return x, seq_len
 
     def max_positions(self):

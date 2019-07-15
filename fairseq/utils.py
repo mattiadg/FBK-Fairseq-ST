@@ -80,6 +80,8 @@ def load_model_state(filename, model):
         if has_encoder and has_decoder and (not ('modified' in state) or not(state['modified'])):
             model.load_state_dict(state['model'], strict=True)
         else:
+            if "encoder.language_embeddings.weight" in state["model"]:
+                del state["model"]["encoder.language_embeddings.weight"]
             model.load_state_dict(state['model'], strict=False)
             print("Loaded model in non-strict mode")
             if has_encoder:
