@@ -92,6 +92,8 @@ class TransformerModel(FairseqModel):
                             help="Position of the language token")
         parser.add_argument('--distance-penalty', action='store_true', default=False,
                             help='Add distance penalty to the encoder')
+        parser.add_argument('--merge', choices=['sum', 'concat'], default='sum',
+                            help='Strategy to merge the language token embedding with the input')
 
 
     @classmethod
@@ -213,6 +215,7 @@ class TransformerEncoder(FairseqEncoder):
 
         self.language_embeddings = language_embeddings
         self.token_position = token_position
+        self.merge = args.merge
 
     def forward(self, src_tokens, src_lengths):
         #Separate input from the language token
@@ -221,7 +224,7 @@ class TransformerEncoder(FairseqEncoder):
         if self.token_position == 'encoder-pre':
             #Concatenate language embedding here B -> B x C
             src_tokens, src_lengths = self.concat_language_embedding\
-                (src_tokens, lang_tokens, src_lengths, dim=1)
+                (src_tokens, lang_tokens, src_lengths, self.merge, dim=1)
 
         #B x T x C -> B x 1 x T x C
         x = src_tokens.unsqueeze(1)
@@ -255,7 +258,7 @@ class TransformerEncoder(FairseqEncoder):
 
         if self.token_position == 'encoder-post':
             #Concatenate language embedding here B -> B x C
-            x, src_lengths = self.concat_language_embedding(x, lang_tokens, src_lengths, dim=0)
+            x, src_lengths = self.concat_language_embedding(x, lang_tokens, src_lengths, self.merge, dim=0)
 
         x = x + self.embed_positions(x.transpose(0, 1), src_lengths).transpose(0, 1)
         x = F.dropout(x, p=self.dropout, training=self.training)
@@ -268,7 +271,7 @@ class TransformerEncoder(FairseqEncoder):
 
         if self.token_position == 'encoder-final':
             #Concatenate language embedding here B -> B x C
-            x, src_lengths = self.concat_language_embedding(x, lang_tokens, src_lengths, dim=0)
+            x, src_lengths = self.concat_language_embedding(x, lang_tokens, src_lengths, self.merge, dim=0)
             encoder_padding_mask = self.create_mask(src_lengths)
 
         if self.normalize:
@@ -298,11 +301,13 @@ class TransformerEncoder(FairseqEncoder):
                 encoder_out['encoder_padding_mask'].index_select(0, new_order)
         return encoder_out
 
-    def concat_language_embedding(self, sequence, lang_tokens, seq_len, dim=0):
+    def concat_language_embedding(self, sequence, lang_tokens, seq_len, method='sum', dim=0):
         lang_embed = self.language_embeddings(lang_tokens)
-        #x = torch.cat([lang_embed.unsqueeze(dim), sequence], dim=dim)
-        x = sequence + lang_embed.unsqueeze(dim)
-        #seq_len = seq_len + 1
+        if method == 'concat':
+            x = torch.cat([lang_embed.unsqueeze(dim), sequence], dim=dim)
+            seq_len = seq_len + 1
+        elif method == 'sum':
+            x = sequence + lang_embed.unsqueeze(dim)
         return x, seq_len
 
     def max_positions(self):
@@ -394,6 +399,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         self.language_embeddings = language_embeddings
         self.token_position = token_position
+        self.merge = args.merge
 
     def forward(self, prev_output_tokens, encoder_out=None, incremental_state=None):
         """
@@ -441,7 +447,10 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                         raise RuntimeError("x is not a beam of lang_embed!")
             #if incremental_state is None or len(incremental_state) == 0:
                 #x[:, 0, :] = lang_embed
-            x = x + lang_embed.unsqueeze(1)
+            if self.merge == 'sum':
+                x = x + lang_embed.unsqueeze(1)
+            elif self.merge == 'concat':
+                x[:, 0, :] = lang_embed
         x = self.embed_scale * x
 
         if self.project_in_dim is not None:
@@ -882,6 +891,7 @@ def speechtransformer_fbk(args):
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
     args.decoder_learned_pos = getattr(args, 'decoder_learned_pos', False)
     args.decoder_normalize_before = getattr(args, 'decoder_normalize_before', True)
+    args.merge = getattr(args, 'merge', 'sum')
 
 
 @register_model_architecture('s-transformer-multilingual', 's-transformer-multilingual-giant')
