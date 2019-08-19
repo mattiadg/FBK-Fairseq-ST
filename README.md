@@ -1,22 +1,20 @@
-<<<<<<< HEAD
 # FBK-fairseq
 
-At the [bottom](#Introduction) of this file you can find the official documentation of fairseq-py before it was modified by us for audio processing. The current fairseq-py offical documentation can be found [here](https://github.com/pytorch/fairseq/blob/master/README.md).
+At the [bottom](#Introduction) of this file you can find the official documentation of this fairseq-py version.
 
 
 ## Requirements and Installation
 * A [PyTorch installation](http://pytorch.org/)
 * For training new models, you'll also need an NVIDIA GPU and [NCCL](https://github.com/NVIDIA/nccl)
-* Python version 3.6 
+* Python version 1.0 
 
-Currently fairseq requires PyTorch version >= 0.4.0.
 Please follow the instructions here: https://github.com/pytorch/pytorch#installation.
 
 
 After PyTorch is installed, you can install fairseq with:
 
 ```
-git clone git@gitlab.com:fbk-hlt-mt/FBK-fairseq.git
+git clone git@github.com:mattiadg/FBK-Fairseq-ST.git
 cd <path to downloaded FBK-fairseq repository>
 
 pip install -r requirements.txt
