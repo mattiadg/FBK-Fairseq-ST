@@ -1,4 +1,15 @@
-# FBK-fairseq
+# FBK-fairseq-ST
+
+FBK-fairseq-ST is an adaptation of [FAIR's fairseq](https://github.com/pytorch/fairseq) for direct speech translation.
+
+This software has been used for the experiments of the following publications:
+* [Fine-tuning on Clean Data for End-to-End Speech Translation: FBK@ IWSLT 2018](https://arxiv.org/abs/1810.07652)
+* [MuST-C: a Multilingual Speech Translation Corpus](https://www.aclweb.org/anthology/N19-1202)
+* [Enhancing Transformer for End-to-end Speech-to-Text Translation](https://docs.wixstatic.com/ugd/705d57_e6b5a5c517fc41769bdd57b67e57bdc9.pdf)
+
+It also implements the speech translation model proposed in [End-to-End Automatic Speech Translation of Audiobooks
+](https://arxiv.org/abs/1802.04200) and the Gaussian distance penalty introduced in [Self-Attentional Acoustic Models
+](https://arxiv.org/abs/1803.09519).
 
 At the [bottom](#Introduction) of this file you can find the official documentation of this fairseq-py version.
 
@@ -6,7 +17,7 @@ At the [bottom](#Introduction) of this file you can find the official documentat
 ## Requirements and Installation
 * A [PyTorch installation](http://pytorch.org/)
 * For training new models, you'll also need an NVIDIA GPU and [NCCL](https://github.com/NVIDIA/nccl)
-* Python version 1.0 
+* Python version >= 0.4.0 
 
 Please follow the instructions here: https://github.com/pytorch/pytorch#installation.
 
@@ -132,6 +143,18 @@ For every other aspects please refer to the official [fairseq-py](https://github
 
 *Note:* Fairseq-py official documentation does not include audio processing and it could change to track fairseq official development, thus the official documentation *could* be incompatible with our version.
 
+## Citation
+
+If you use this software for your research, then please cite it as:
+```
+@inproceedings{digangi2019enhancing,
+  author    = {Di Gangi, Mattia Antonino, and Negri, Matteo and Cattoni, Roldano and Dess\`i, Roberto and Turchi, Marco},
+  title     = "{Enhancing Transformer for End-to-end Speech-to-Text Translation}",
+  booktitle = {Proceedings of MT Summit XVII, volume 1, Aug. 19-23, Dublin, Ireland. pp. 21-31 },
+  year      = 2019,
+}
+```
+
 ======================================
 
 The following was the official fairseq-py documentation when we began developing FBK-fairseq (August 2018)
@@ -243,19 +266,6 @@ BLEU4 = 40.83, 67.5/46.9/34.4/25.5 (BP=1.000, ratio=1.006, syslen=83262, reflen=
 
 * Facebook page: https://www.facebook.com/groups/fairseq.users
 * Google group: https://groups.google.com/forum/#!forum/fairseq-users
-
-# Citation
-
-If you use the code in your paper, then please cite it as:
-
-```
-@inproceedings{gehring2017convs2s,
-  author    = {Gehring, Jonas, and Auli, Michael and Grangier, David and Yarats, Denis and Dauphin, Yann N},
-  title     = "{Convolutional Sequence to Sequence Learning}",
-  booktitle = {Proc. of ICML},
-  year      = 2017,
-}
-```
 
 # License
 fairseq(-py) is BSD-licensed.
