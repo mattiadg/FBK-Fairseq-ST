@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 from fairseq import utils
-from fairseq.models.speechtransformer import TransformerEncoder
+from fairseq.models.r_transformer import TransformerEncoder
 from fairseq.models.ast_seq2seq import (
         CLSTMDecoder, DotAttentionLayer, GeneralAttentionLayer,
         MLPAttentionLayer,)

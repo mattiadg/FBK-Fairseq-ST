@@ -65,7 +65,7 @@ This is the minimum required command to train a seq2seq model for ST.
 ```
 python train.py <path_to folder_with_binary_data> \
 	--arch {fconv | transformer | ast_seq2seq | ber2transf | ecc} \
-	--save-dir <path_where_to_store_model_checkpoints> --task speech_translation
+	--save-dir <path_where_to_store_model_checkpoints> --task translation --audio-input
 ```
 
 
@@ -87,8 +87,8 @@ available architecures:
 			fconv_wmt_en_de, fconv_wmt_en_fr (default: fconv)
 ```
 
-The architecrure used for IWSLT is ast_seq2seq.
-To reproduce our IWSLT result on the IWSLT en-de Ted Corpus the following command should be used (please substitute the bracketed commands accordingly:
+The architecrure used for IWSLT2018 is ast_seq2seq.
+To reproduce our IWSLT2018 result on the IWSLT en-de Ted Corpus the following command should be used (please substitute the bracketed commands accordingly:
 
 
 ```
@@ -125,7 +125,7 @@ The possibile parameters to be changed can be found in every model file in the `
 
 ```
 python generate.py <path_to_binarized_data_FOLDER> --path \
-	<path_to_checkpoint_to_use> --task speech_translation \
+	<path_to_checkpoint_to_use> --task translation --audio-input\
 	[[--gen-subset valid] [--beam 5] [--batch 32] \
 	[--quiet] [--skip-invalid-size-inputs-valid-test]] \
 	

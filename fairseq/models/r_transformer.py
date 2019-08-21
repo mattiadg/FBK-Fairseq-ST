@@ -207,6 +207,7 @@ class TransformerEncoder(FairseqEncoder):
             .contiguous().transpose(0, 1)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.relu(self.fc3(x))
+        
         x = x + self.embed_positions(x.transpose(0, 1), src_lengths).transpose(0, 1)
         x = F.dropout(x, p=self.dropout, training=self.training)
 
