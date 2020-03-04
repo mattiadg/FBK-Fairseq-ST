@@ -18,7 +18,7 @@ from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
 from .scalar_bias import ScalarBias
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
-from .multihead_attention import LocalMultiheadAttention, MultiheadAttention
+from .multihead_attention import LocalMultiheadAttention, MultiheadAttention, ConvAttention2D
 
 __all__ = [
     'AdaptiveInput',
@@ -32,6 +32,7 @@ __all__ = [
     'LearnedPositionalEmbedding',
     'LinearizedConvolution',
     'LocalMultiheadAttention'
+    'ConvAttention2D',
     'MultiheadAttention',
     'ScalarBias',
     'SinusoidalPositionalEmbedding',
