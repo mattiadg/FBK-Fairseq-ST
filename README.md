@@ -107,7 +107,7 @@ CUDA_VISIBLE_DEVICES=[gpu id] python train.py [path to binarized IWSLT data] \
     --arch ast_seq2seq \
     --decoder-attention True \
     --seed 666 \
-    --task speech_translation \
+    --task translation \
     --skip-invalid-size-inputs-valid-test \
     --sentence-avg \
     --attention-type general \
@@ -115,6 +115,34 @@ CUDA_VISIBLE_DEVICES=[gpu id] python train.py [path to binarized IWSLT data] \
     --criterion label_smoothed_cross_entropy \
     --label-smoothing 0.1
 ```
+
+To reproduce the results on MuST-C of the paper "Adapting Transformer to End-to-End Spoken Language Translation" run the following (on 4 gpus):
+```
+
+CUDA_VISIBLE_DEVICES=[gpu id] python train.py [path to binarized MuST-C data] \
+    --clip-norm 20 \
+    --max-sentences 8 \
+    --max-tokens 12000 \
+    --save-dir [output folder] \
+    --max-epoch 100 \
+    --lr 5e-3 \
+    --min-lr 1e-08 \
+    --dropout 0.1 \
+    --lr-schedule inverse_sqrt \
+    --warmup-updates 4000 --warmup-init-lr 3e-4 \
+    --optimizer adam \
+    --arch speechconvtransformer_big \
+    --task translation \
+    --audio-input \
+    --max-source-positions 1400 --max-target-positions 300 \
+    --update-freq 16 \
+    --skip-invalid-size-inputs-valid-test \
+    --sentence-avg \
+    --distance-penalty {log,gauss} \
+    --criterion label_smoothed_cross_entropy \
+    --label-smoothing 0.1
+```
+
 
 
 Architecture-specific parameter can be specified through command line arguments (highest priority) or through code. Code must be added at the end of a model file in *fairseq/models/* using the `@register_model_architecture` decorator.
