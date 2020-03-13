@@ -32,6 +32,13 @@ pip install -r requirements.txt
 python setup.py build develop
 ```
 
+## Preprocessing: Data preparation
+To reproduce our experiments, the textual side of data should be first tokenized, then split in characters. For tokenization we used the [Moses scripts](https://github.com/moses-smt/mosesdecoder/tree/master/scripts):
+```
+$moses_scripts/tokenizer/tokenizer.perl -l $LANG < $INPUT_FILE | $moses_scripts/tokenizer/deescape-special-chars.perl > $INPUT_FILE.tok
+bash FBK-fairseq-st/scripts/word_level2char_level.sh $INPUT_FILE.tok
+```
+
 ## Preprocessing: binarizing data
 
 As of now, the only supported audio format are *.npz* and *.h5*.
@@ -163,7 +170,11 @@ With the `--quiet` flag only the translations (i.e. hypothesis of the model) wil
 
 
 *NOTE*: translations are generated following a length order criterion (shortest samples first). Thus the order is not the same as the one in the origianal [test | dev ] set. This is an optimization trick done by fairseq at generation time. Thus the original reference translation are usually not a good solution to compute the BLEU score. A specific reference translation file must be used. It is IMPORTANT to note that said reference translation file is dependent on the `--batch value` used to generate the hypothesis with the system. This happens because the length order used to output the translation is also dependent on such value.
-This means a specific reference translation file for every `--batch` value used must be created. A reference file can be created by generating the translations without `--quiet` flag, redirecting stdout to a file and then pass such file as input to the script *sort-sentences.py* in the folder *scripts* of the branch *transformer*.
+This means a specific reference translation file for every `--batch` value used must be created. A reference file can be created by generating the translations without `--quiet` flag, redirecting stdout to a file and then pass such file as input to the script *sort-sentences.py*, then bring it back to words:
+```
+python sort-sentences.py $TRANSLATION 5 > $TRANSLATION.sort
+sh extract_words.sh $TRANSLATION.sort
+```
 
 
 For every other aspects please refer to the official [fairseq-py](https://github.com/pytorch/fairseq/blob/master/README.md) documentation.
