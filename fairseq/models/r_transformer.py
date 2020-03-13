@@ -207,7 +207,7 @@ class TransformerEncoder(FairseqEncoder):
             .contiguous().transpose(0, 1)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.relu(self.fc3(x))
-        
+
         x = x + self.embed_positions(x.transpose(0, 1), src_lengths).transpose(0, 1)
         x = F.dropout(x, p=self.dropout, training=self.training)
 
@@ -722,40 +722,6 @@ def BatchNorm(embedding_dim):
     nn.init.constant_(m.weight, 1)
     nn.init.constant_(m.bias, 0)
     return m
-
-@register_model_architecture('r_transformer_lm', 'r_transformer_lm')
-def base_lm_architecture(args):
-    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 512)
-    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 2048)
-    args.decoder_layers = getattr(args, 'decoder_layers', 6)
-    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
-    args.adaptive_softmax_cutoff = getattr(args, 'adaptive_softmax_cutoff', None)
-    args.decoder_learned_pos = getattr(args, 'decoder_learned_pos', False)
-
-    # The model training is not stable without this
-    args.decoder_normalize_before = True
-
-
-@register_model_architecture('r_transformer_lm', 'r_transformer_lm_big')
-def speechtransformer_lm_big(args):
-    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 1024)
-    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 4096)
-    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 16)
-    base_lm_architecture(args)
-
-
-@register_model_architecture('r_transformer_lm', 'r_transformer_lm_wiki103')
-def speechtransformer_lm_wiki103(args):
-    args.dropout = getattr(args, 'dropout', 0.3)
-    base_lm_architecture(args)
-
-
-@register_model_architecture('r_transformer_lm', 'r_transformer_lm_gbw')
-def speechtransformer_lm_gbw(args):
-    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 512)
-    args.dropout = getattr(args, 'dropout', 0.1)
-    args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    speechtransformer_lm_big(args)
 
 
 @register_model_architecture('r_transformer', 'r_transformer')
