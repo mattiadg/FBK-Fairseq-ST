@@ -151,10 +151,17 @@ CUDA_VISIBLE_DEVICES=[gpu id] python train.py [path to binarized MuST-C data] \
 ```
 
 
-
 Architecture-specific parameter can be specified through command line arguments (highest priority) or through code. Code must be added at the end of a model file in *fairseq/models/* using the `@register_model_architecture` decorator.
 The possibile parameters to be changed can be found in every model file in the `add_args` method.
 
+## Multilingual training
+Multilingual training, as in [ONE-TO-MANY MULTILINGUAL END-TO-END SPEECH TRANSLATION](https://arxiv.org/abs/1910.03320), can be performed with the following options:
+```
+--task token_multilingual_translation
+--lang-pairs comma-separated,lang-pairs
+--arch s-transformer-multilingual-big
+--token-position {encoder-pre,encoder-post,encoder-final,decoder}
+```
 
 ## Generation: translating audio
 

@@ -90,8 +90,11 @@ class TransformerModel(FairseqModel):
         parser.add_argument('--token-position',
                             choices=['encoder-pre', 'encoder-post', 'encoder-final', 'decoder'],
                             help="Position of the language token")
-        parser.add_argument('--distance-penalty', action='store_true', default=False,
+        parser.add_argument('--distance-penalty', type=str, default=False,
+                            choices=['log', 'gauss'],
                             help='Add distance penalty to the encoder')
+        parser.add_argument('--init-variance', type=float, default=1.0,
+                            help='Initialization value for variance')
         parser.add_argument('--merge', choices=['sum', 'concat'], default='sum',
                             help='Strategy to merge the language token embedding with the input')
 
@@ -557,11 +560,18 @@ class TransformerEncoderLayer(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.embed_dim = args.encoder_embed_dim
-        attn = LocalMultiheadAttention if args.distance_penalty else MultiheadAttention
-        self.self_attn = attn(
-            self.embed_dim, args.encoder_attention_heads,
-            dropout=args.attention_dropout,
+        attn = LocalMultiheadAttention if args.distance_penalty != False else MultiheadAttention
+        if isinstance(attn, LocalMultiheadAttention):
+            self.self_attn = attn(
+                self.embed_dim, args.encoder_attention_heads,
+                dropout=args.attention_dropout, penalty=args.distance_penalty,
+                init_variance=(args.init_variance if args.distance_penalty == 'gauss' else None)
         )
+        else:
+            self.self_attn = attn(
+                self.embed_dim, args.encoder_attention_heads,
+                dropout=args.attention_dropout
+            )
         self.dropout = args.dropout
         self.relu_dropout = args.relu_dropout
         self.normalize_before = args.encoder_normalize_before
@@ -868,7 +878,13 @@ def speechtransformer_fbk(args):
 
 
 @register_model_architecture('s-transformer-multilingual', 's-transformer-multilingual-big')
-def speechtransformer_fbk(args):
+def speechtransformer_fbk_big(args):
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1024)
+    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 1024)
+    speechtransformer_fbk_big2(args)
+
+@register_model_architecture('s-transformer-multilingual', 's-transformer-multilingual-big2')
+def speechtransformer_fbk_big2(args):
     args.dropout = getattr(args, 'dropout', 0.3)
     args.normalization_constant = getattr(args, 'normalization_constant', 0.5)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
