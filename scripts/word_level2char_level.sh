@@ -1,6 +1,6 @@
 sed -i "s/ /*/g" $1
 
-python /hltsrv3/rdessi/scripts/space_char.py $1 $1".tmp"
+python $(dirname $0)/space_char.py $1 $1".tmp"
 
 rm $1
 
