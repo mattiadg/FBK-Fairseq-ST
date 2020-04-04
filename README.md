@@ -186,11 +186,12 @@ For every other aspects please refer to the official [fairseq-py](https://github
 
 If you use this software for your research, then please cite it as:
 ```
-@inproceedings{digangi2019enhancing,
-  author    = {Di Gangi, Mattia Antonino, and Negri, Matteo and Cattoni, Roldano and Dess\`i, Roberto and Turchi, Marco},
-  title     = "{Enhancing Transformer for End-to-end Speech-to-Text Translation}",
-  booktitle = {Proceedings of MT Summit XVII, volume 1, Aug. 19-23, Dublin, Ireland. pp. 21-31 },
-  year      = 2019,
+@article{di2019adapting,
+  title={Adapting Transformer to End-to-End Spoken Language Translation},
+  author={Di Gangi, Mattia A and Negri, Matteo and Turchi, Marco},
+  journal={Proc. Interspeech 2019},
+  pages={1133--1137},
+  year={2019}
 }
 ```
 
