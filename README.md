@@ -44,7 +44,7 @@ bash FBK-fairseq-st/scripts/word_level2char_level.sh $INPUT_FILE.tok
 As of now, the only supported audio format are *.npz* and *.h5*.
 
 ```
-python preprocess.py -s <audio_format> -t fr --format <h5 | npz> --inputtype audio \
+python preprocess.py -s <source_language> -t <target_language> --format <h5 | npz> --inputtype audio \
 	--trainpref <path_to_train_data> [[--validpref <path_to_validation_data>] \
 	[--testpref <path_to_test_data>]] --destdir <path to output folder>
 ```
@@ -194,6 +194,9 @@ If you use this software for your research, then please cite it as:
   year={2019}
 }
 ```
+
+## Acknowledgment
+This codebase is part of a project financially supported by an Amazon ML Grant.
 
 ======================================
 
