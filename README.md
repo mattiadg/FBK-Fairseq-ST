@@ -11,6 +11,8 @@ It also implements the speech translation model proposed in [End-to-End Automati
 ](https://arxiv.org/abs/1802.04200) and the Gaussian distance penalty introduced in [Self-Attentional Acoustic Models
 ](https://arxiv.org/abs/1803.09519).
 
+The pre-trained models for those papers can be found [here](https://ict.fbk.eu/st-fairseq-models/).
+
 At the [bottom](#Introduction) of this file you can find the official documentation of this fairseq-py version.
 
 
