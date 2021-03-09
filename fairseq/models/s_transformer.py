@@ -465,12 +465,18 @@ class TransformerEncoderLayer(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.embed_dim = args.encoder_embed_dim
-        attn = LocalMultiheadAttention if args.distance_penalty != False else MultiheadAttention
-        self.self_attn = attn(
-            self.embed_dim, args.encoder_attention_heads,
-            dropout=args.attention_dropout, penalty=args.distance_penalty,
-            init_variance=(args.init_variance if args.distance_penalty == 'gauss' else None)
-        )
+
+        if args.distance_penalty != False:
+            self.self_attn = LocalMultiheadAttention(
+                self.embed_dim, args.encoder_attention_heads,
+                dropout=args.attention_dropout, penalty=args.distance_penalty,
+                init_variance=(args.init_variance if args.distance_penalty == 'gauss' else None)
+            )
+        else:
+            self.self_attn = MultiheadAttention(
+                self.embed_dim, args.encoder_attention_heads,
+                dropout=args.attention_dropout,
+            )
         self.dropout = args.dropout
         self.relu_dropout = args.relu_dropout
         self.normalize_before = args.encoder_normalize_before
