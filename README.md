@@ -1,6 +1,7 @@
 # FBK-fairseq-ST
 
 FBK-fairseq-ST is an adaptation of [FAIR's fairseq](https://github.com/pytorch/fairseq) for direct speech translation.
+This repo is no longer active, you should refer to [this fork](https://github.com/mgaido91/FBK-fairseq-ST) under development.
 
 This software has been used for the experiments of the following publications:
 * [Fine-tuning on Clean Data for End-to-End Speech Translation: FBK@ IWSLT 2018](https://arxiv.org/abs/1810.07652)
