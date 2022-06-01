@@ -1,5 +1,7 @@
 # FBK-fairseq-ST
 
+This code is not maintained any more! Please follow [the new repository](https://github.com/mgaido91/FBK-fairseq-ST) that is currently maintained.
+
 FBK-fairseq-ST is an adaptation of [FAIR's fairseq](https://github.com/pytorch/fairseq) for direct speech translation.
 This repo is no longer active, you should refer to [this fork](https://github.com/mgaido91/FBK-fairseq-ST) under development.
 
